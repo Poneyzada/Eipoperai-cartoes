@@ -125,36 +125,85 @@ export function getBestBuyDay(closingDay: number): number {
   return closingDay;
 }
 
-// Categorização preditiva baseada em inteligência de palavras-chave (estilo Monerix)
+// Categorização preditiva baseada em inteligência de palavras-chave brasileiras (estilo Monerix)
 export function categorizeByDescription(desc: string): string {
-  const text = desc.toLowerCase();
+  // Limpar prefixos comuns de maquininhas e adquirentes
+  let text = desc
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos para busca precisa
+    .replace(/^(pag\*|pg\*|mp\*|stone\*|cielo\*|rede\*|sumup\*|getnet\*|dl\*|paypal\*)/gi, '')
+    .trim();
 
-  if (/ifood|rappi|mcdonald|burger|bk|habib|pizz|restaurante|bar |lanch|churrasc|subway|padaria|pastel|acai|açaí|café|starbucks/i.test(text)) {
+  // 1. Alimentação & Delivery
+  if (
+    /ifood|rappi|ze delivery|ze\*|delivery|aiqfome|mcdonald|mc donald|burger king|burguer|burger|bk\b|habib|subway|bobs|popeyes|kfc|giraffas|spoleto|outback|coco bambu|madero|paris 6|restaurante|churrasc|pizz|choperia|cervejaria|adega|bar\b|boteco|bistro|padaria|panificadora|panif|confeitaria|doceria|cafe\b|cafeteria|starbucks|cacau show|kopenhagen|sorvete|gelato|bacio di latte|pastel|lanchonete|lanch|acai|sushi|temaki|oriental|poke|yakisoba|espeto|fogao/i.test(
+      text
+    )
+  ) {
     return 'Alimentação & Delivery';
   }
-  if (/uber|99app|99\*|táxi|taxi|posto|gasolina|etanol|combustiv|shell|ipiranga|petrobras|estacionamento|pedagio|sem parar|veloe|auto posto/i.test(text)) {
-    return 'Transporte & Combustível';
-  }
-  if (/mercado|supermercado|carrefour|pao de acucar|pão de açúcar|assai|assaí|atacadao|atacadão|dia%|swift|hortifruti|oxxo/i.test(text)) {
+
+  // 2. Supermercado & Atacado
+  if (
+    /mercado|supermercado|superm|hipermercado|mercearia|hortifruti|sacolao|quitanda|oxxo|dia%|swift|carrefour|pao de acucar|extra\b|assai|atacadao|sams club|costco|big\b|bompreco|guanabara|muffato|condor|zaffari|prezunic|supernosso|savegnago|tenda atacado|spani|makro|nagumo|covabra|bahamas|supermercados bh|da terra/i.test(
+      text
+    )
+  ) {
     return 'Supermercado';
   }
-  if (/netflix|spotify|amazon prime|disney|hbo|max|youtube\*|apple\.com|google\*|deezer|globo|paramount|crunchyroll|adobe|openai|chatgpt/i.test(text)) {
+
+  // 3. Transporte & Combustível
+  if (
+    /uber|99app|99\*|99 tecnologia|cabify|indrive|taxi|metro|cptm|onibus|bilhete unico|buser|posto|gasolina|etanol|combustiv|abastece|shell|ipiranga|petrobras|br mania|raizen|lubrax|ale combustiveis|estacionamento|estac|valet|garagem|pedagio|sem parar|semparar|veloe|conectcar|taggy|move mais|autopass|ecovias|autoban|oficina|mecanic|auto peca|pneus|lava rapido|lava jato/i.test(
+      text
+    )
+  ) {
+    return 'Transporte & Combustível';
+  }
+
+  // 4. Assinaturas & Streaming
+  if (
+    /netflix|spotify|amazon prime|prime video|disney|star\+|hbo|max\.com|max\b|youtube|globoplay|globo play|deezer|apple music|paramount|crunchyroll|telecine|tidal|apple\.com|itunes|google\*|google play|google storage|google cloud|openai|chatgpt|anthropic|claude|adobe|canva|notion|figma|github|cursor|dropbox|icloud|microsoft|office 365|midjourney|freepik/i.test(
+      text
+    )
+  ) {
     return 'Assinaturas & Streaming';
   }
-  if (/drogasil|droga raia|farmacia|farmácia|panvel|pague menos|drogaria|consulta|medico|médico|dentista|hospital|laboratorio|exame/i.test(text)) {
+
+  // 5. Saúde & Farmácia
+  if (
+    /drogasil|droga raia|drogaria|panvel|pague menos|pacheco|sao paulo|ultrafarma|farmacia|manipulacao|farma|consulta|medico|clinica|hospital|laboratorio|fleury|delboni|lavoisier|dasa|exame|dentista|odont|ortodontia|psicolog|terapia|fisioterap|oftalmo|otica|lentes/i.test(
+      text
+    )
+  ) {
     return 'Saúde & Farmácia';
   }
-  if (/steam|playstation|sony|xbox|nintendo|cinema|cinemark|ingresso|show|teatro|sympla|eventim|airbnb|booking|hotel|viagem|decolar|gol |latam|azul/i.test(text)) {
+
+  // 6. Lazer, Viagens & Fitness
+  if (
+    /steam|playstation|psn|sony play|xbox|nintendo|epic games|blizzard|riot games|roblox|cinema|cinemark|cinepolis|kinoplex|ingresso\.com|sympla|eventim|ticket360|blueticket|show|teatro|parque|beto carrero|beach park|latam|gol\b|voegol|azul\b|voeazul|avianca|decolar|123milhas|maxmilhas|cvc|viajanet|airbnb|booking|hotel|pousada|resort|hostel|smart fit|smartfit|bluefit|bodytech|bio ritmo|academia|gym|crossfit|ironberg|jiujitsu/i.test(
+      text
+    )
+  ) {
     return 'Lazer & Viagens';
   }
-  if (/shopee|mercado livre|mercadolivre|amazon|shein|magalu|magazine|casas bahia|aliexpress|zara|renner|riachuelo|c&a|kabum|pichau|terabyte|nike|adidas/i.test(text)) {
+
+  // 7. Compras, Eletrônicos & Educação/Livros
+  if (
+    /shopee|mercado livre|mercadolivre|mercado pago|amazon|shein|aliexpress|ali express|magalu|magazine luiza|casas bahia|americanas|submarino|shoptime|olx|enjoei|kabum|pichau|terabyte|dell|samsung|apple store|fast shop|kalunga|lenovo|motorola|xiaomi|eletronico|informatica|zara|renner|riachuelo|c&a|cea\b|marisa|hering|amaro|centauro|decathlon|nike|adidas|puma|arezzo|schutz|netshoes|leroy merlin|telhanorte|tok&stok|camicado|mobly|saraiva|livraria|leitura|udemy|alura|hotmart|kiwify|eduzz|curso|faculdade|escola|petz|cobasi|pet shop/i.test(
+      text
+    )
+  ) {
     return 'Compras & Eletrônicos';
   }
-  if (/enel|cpfl|sabesp|copel|cemig|claro|vivo|tim|oi|internet|condominio|condomínio|aluguel|iptu|ipva|seguro/i.test(text)) {
+
+  // 8. Contas & Moradia
+  if (
+    /enel|cpfl|sabesp|copel|cemig|light|energisa|sanepar|copasa|embasa|comgas|naturgy|coelba|claro|vivo|tim\b|oi\b|telecom|internet|fibra|condominio|aluguel|quinto andar|imobiliaria|iptu|ipva|seguro auto|porto seguro/i.test(
+      text
+    )
+  ) {
     return 'Contas & Moradia';
-  }
-  if (/curso|faculdade|universidade|escola|udemy|alura|hotmart|kiwify|livro|saraiva/i.test(text)) {
-    return 'Educação';
   }
 
   return 'Outros';

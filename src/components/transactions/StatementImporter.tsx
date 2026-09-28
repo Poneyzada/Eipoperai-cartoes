@@ -162,6 +162,9 @@ export const StatementImporter: React.FC<StatementImporterProps> = ({
     .filter(e => e.selected)
     .reduce((acc, curr) => acc + curr.amount, 0);
 
+  const autoCategorizedCount = extracted
+    .filter(e => e.suggested_category && e.suggested_category !== 'Outros').length;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
       <div className="w-full max-w-2xl glass-panel rounded-2xl p-6 shadow-2xl border border-amber-500/25 max-h-[90vh] flex flex-col">
@@ -355,7 +358,27 @@ export const StatementImporter: React.FC<StatementImporterProps> = ({
         {step === 'review' && (
           <div className="flex-1 overflow-hidden flex flex-col pt-2">
             
-            <div className="flex items-center justify-between pb-3 text-xs text-zinc-300">
+            {/* Banner Informativo de Auto-Categorização */}
+            <div className="mb-3 p-3 rounded-xl bg-gradient-to-r from-amber-500/15 via-yellow-500/10 to-amber-500/5 border border-amber-500/30 flex items-center justify-between gap-3 flex-shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center flex-shrink-0 border border-amber-500/30">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-amber-300">
+                    Categorias Selecionadas Automaticamente!
+                  </p>
+                  <p className="text-[11px] text-zinc-300">
+                    O Eipô Peraí já classificou {autoCategorizedCount} de {extracted.length} compras. Só altere no menu se quiser trocar alguma.
+                  </p>
+                </div>
+              </div>
+              <span className="text-[11px] font-black px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex-shrink-0">
+                {Math.round((autoCategorizedCount / Math.max(extracted.length, 1)) * 100)}% Auto
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between pb-3 text-xs text-zinc-300 flex-shrink-0">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -378,49 +401,67 @@ export const StatementImporter: React.FC<StatementImporterProps> = ({
 
             {/* Tabela de Revisão com scroll */}
             <div className="flex-1 overflow-y-auto border border-zinc-800 rounded-xl bg-zinc-950/70 divide-y divide-zinc-800/80">
-              {extracted.map((item) => (
-                <div
-                  key={item.id}
-                  className={`p-3 flex items-center justify-between gap-3 text-xs transition-colors ${
-                    item.selected ? 'bg-amber-500/5' : 'opacity-40'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                    <button
-                      type="button"
-                      onClick={() => toggleSelect(item.id)}
-                      className="text-zinc-400 hover:text-amber-300 flex-shrink-0"
-                    >
-                      {item.selected ? (
-                        <CheckSquare className="w-4 h-4 text-amber-400" />
-                      ) : (
-                        <Square className="w-4 h-4 text-zinc-600" />
-                      )}
-                    </button>
-                    <div className="truncate">
-                      <p className="font-bold text-white truncate">{item.description}</p>
-                      <p className="text-[10px] text-zinc-400">{formatDate(item.date)}</p>
+              {extracted.map((item) => {
+                const isAuto = item.suggested_category && item.suggested_category !== 'Outros';
+                return (
+                  <div
+                    key={item.id}
+                    className={`p-3 flex items-center justify-between gap-3 text-xs transition-colors ${
+                      item.selected ? 'bg-amber-500/5' : 'opacity-40'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => toggleSelect(item.id)}
+                        className="text-zinc-400 hover:text-amber-300 flex-shrink-0"
+                      >
+                        {item.selected ? (
+                          <CheckSquare className="w-4 h-4 text-amber-400" />
+                        ) : (
+                          <Square className="w-4 h-4 text-zinc-600" />
+                        )}
+                      </button>
+                      <div className="truncate">
+                        <p className="font-bold text-white truncate">{item.description}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-[10px] text-zinc-400">{formatDate(item.date)}</p>
+                          {isAuto ? (
+                            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/25">
+                              <Sparkles className="w-2.5 h-2.5 text-amber-400" /> Auto
+                            </span>
+                          ) : (
+                            <span className="inline-flex text-[9px] font-semibold text-zinc-500 bg-zinc-800/50 px-1.5 py-0.2 rounded">
+                              Outros
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 flex-shrink-0">
+                      {/* Seletor da Categoria Sugerida */}
+                      <select
+                        value={item.suggested_category}
+                        onChange={(e) => updateItemCategory(item.id, e.target.value)}
+                        className={`text-[11px] rounded-lg px-2 py-1 max-w-[145px] focus:outline-none focus:border-amber-400 transition-colors ${
+                          isAuto
+                            ? 'bg-zinc-900/90 border border-amber-500/40 text-amber-200 font-medium'
+                            : 'bg-zinc-900 border border-zinc-700 text-zinc-400'
+                        }`}
+                      >
+                        {categories.map(c => (
+                          <option key={c.id} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
+
+                      <span className="font-black text-amber-300 text-right min-w-[80px]">
+                        {formatCurrency(item.amount)}
+                      </span>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    {/* Seletor da Categoria Sugerida */}
-                    <select
-                      value={item.suggested_category}
-                      onChange={(e) => updateItemCategory(item.id, e.target.value)}
-                      className="bg-zinc-900 border border-zinc-700 text-zinc-200 text-[11px] rounded-lg px-2 py-1 max-w-[150px] focus:outline-none focus:border-amber-400"
-                    >
-                      {categories.map(c => (
-                        <option key={c.id} value={c.name}>{c.name}</option>
-                      ))}
-                    </select>
-
-                    <span className="font-black text-amber-300 text-right min-w-[85px]">
-                      {formatCurrency(item.amount)}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Footer de Ação */}
