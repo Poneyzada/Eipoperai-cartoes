@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../../hooks/useAppContext';
 import { formatCurrency, formatDate, parseStatementText } from '../../lib/utils';
 import { parseExcelFile, parseOfxContent, parseCsvContent } from '../../lib/fileParser';
@@ -47,6 +47,13 @@ export const StatementImporter: React.FC<StatementImporterProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Garantir que um cartão válido esteja sempre selecionado
+  useEffect(() => {
+    if (cards.length > 0 && (!targetCardId || !cards.some(c => c.id === targetCardId))) {
+      setTargetCardId(cards[0].id);
+    }
+  }, [cards, targetCardId, isOpen]);
 
   // Processar arquivo
   const processFile = async (file: File) => {
@@ -142,15 +149,20 @@ export const StatementImporter: React.FC<StatementImporterProps> = ({
 
     setLoading(true);
     try {
-      await importTransactions(targetCardId, selectedItems);
+      const effectiveCardId = (targetCardId && cards.some(c => c.id === targetCardId))
+        ? targetCardId
+        : (cards[0]?.id || 'card-nubank');
+
+      await importTransactions(effectiveCardId, selectedItems);
       onClose();
       // Reset
       setRawText('');
       setSelectedFile(null);
       setExtracted([]);
       setStep('input');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error importing:', err);
+      setErrorMessage(`Erro ao importar: ${err?.message || 'Falha ao salvar'}`);
     } finally {
       setLoading(false);
     }

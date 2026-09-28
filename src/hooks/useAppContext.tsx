@@ -155,7 +155,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const createTransaction = async (txData: Omit<Transaction, 'id' | 'user_id' | 'created_at'>) => {
+    const card = cardsRaw.find(c => c.id === txData.card_id) || cardsRaw[0];
+    const closingDay = card ? card.closing_day : 10;
+    const invoiceMonth = calculateInvoiceMonth(txData.date, closingDay);
+
     await StorageService.createTransaction(txData, cardsRaw, user?.id);
+    setSelectedMonth(invoiceMonth);
     await loadData();
   };
 
@@ -187,20 +192,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const importTransactions = async (cardId: string, items: ExtractedTransaction[]) => {
-    for (const item of items) {
-      if (!item.selected) continue;
-      // Encontrar id da categoria correspondente
+    const selectedItems = items.filter(e => e.selected);
+    if (selectedItems.length === 0) return;
+
+    // Se o cartão passado não existir, pega o primeiro cartão válido
+    const effectiveCardId = (cardId && cardsRaw.some(c => c.id === cardId))
+      ? cardId
+      : (cardsRaw[0]?.id || 'card-nubank');
+
+    const txInputs = selectedItems.map(item => {
       const cat = categories.find(c => c.name.toLowerCase() === item.suggested_category.toLowerCase()) || categories[0];
-      await StorageService.createTransaction({
-        card_id: cardId,
+      return {
+        card_id: effectiveCardId,
         description: item.description,
         amount: item.amount,
         date: item.date,
         total_installments: 1,
         category_id: cat?.id || 'cat-9',
         notes: 'Importado de extrato',
-      }, cardsRaw, user?.id);
+      };
+    });
+
+    const result = await StorageService.createTransactionsBatch(txInputs, cardsRaw, user?.id);
+
+    // Mudar imediatamente para o mês onde caíram os lançamentos
+    if (result.primaryInvoiceMonth) {
+      setSelectedMonth(result.primaryInvoiceMonth);
     }
+
+    // Confetes de comemoração
+    try {
+      confetti({
+        particleCount: 70,
+        spread: 60,
+        origin: { y: 0.7 }
+      });
+    } catch (e) {
+      // Ignorar se não suportado
+    }
+
     await loadData();
   };
 

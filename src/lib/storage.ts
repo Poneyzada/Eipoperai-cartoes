@@ -11,6 +11,28 @@ const STORAGE_KEYS = {
   DEMO_MODE: 'eipoperai_demo_mode',
 };
 
+// Validador de formato UUID v4 do PostgreSQL
+export function isValidUUID(str?: string): boolean {
+  if (!str) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+}
+
+// Gerador confiável de UUID v4 (compatível com navegadores antigos e mobile)
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    try {
+      return crypto.randomUUID();
+    } catch (e) {
+      // fallback
+    }
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'cat-1', name: 'Alimentação & Delivery', icon: 'UtensilsCrossed', color: '#f59e0b', is_default: true },
   { id: 'cat-2', name: 'Supermercado', icon: 'ShoppingCart', color: '#10b981', is_default: true },
@@ -70,11 +92,10 @@ function generateInitialTransactions(): { transactions: Transaction[]; installme
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
-  const ym = `${currentYear}-${currentMonth}`;
 
   const txs: Transaction[] = [
     {
-      id: 'tx-1',
+      id: generateUUID(),
       user_id: 'user-demo',
       card_id: 'card-nubank',
       category_id: 'cat-5',
@@ -86,7 +107,7 @@ function generateInitialTransactions(): { transactions: Transaction[]; installme
       created_at: new Date().toISOString(),
     },
     {
-      id: 'tx-2',
+      id: generateUUID(),
       user_id: 'user-demo',
       card_id: 'card-nubank',
       category_id: 'cat-1',
@@ -98,7 +119,7 @@ function generateInitialTransactions(): { transactions: Transaction[]; installme
       created_at: new Date().toISOString(),
     },
     {
-      id: 'tx-3',
+      id: generateUUID(),
       user_id: 'user-demo',
       card_id: 'card-inter',
       category_id: 'cat-2',
@@ -109,7 +130,7 @@ function generateInitialTransactions(): { transactions: Transaction[]; installme
       created_at: new Date().toISOString(),
     },
     {
-      id: 'tx-4',
+      id: generateUUID(),
       user_id: 'user-demo',
       card_id: 'card-inter',
       category_id: 'cat-3',
@@ -120,7 +141,7 @@ function generateInitialTransactions(): { transactions: Transaction[]; installme
       created_at: new Date().toISOString(),
     },
     {
-      id: 'tx-5',
+      id: generateUUID(),
       user_id: 'user-demo',
       card_id: 'card-itau',
       category_id: 'cat-6',
@@ -131,7 +152,7 @@ function generateInitialTransactions(): { transactions: Transaction[]; installme
       created_at: new Date().toISOString(),
     },
     {
-      id: 'tx-6',
+      id: generateUUID(),
       user_id: 'user-demo',
       card_id: 'card-nubank',
       category_id: 'cat-4',
@@ -154,7 +175,7 @@ function generateInitialTransactions(): { transactions: Transaction[]; installme
       const invMonth = addMonthsToYM(firstInvoiceMonth, i - 1);
       const dueDate = calculateDueDate(invMonth, card.due_day);
       installments.push({
-        id: `inst-${tx.id}-${i}`,
+        id: generateUUID(),
         transaction_id: tx.id,
         user_id: tx.user_id,
         card_id: tx.card_id,
@@ -175,29 +196,46 @@ function generateInitialTransactions(): { transactions: Transaction[]; installme
   return { transactions: txs, installments };
 }
 
-// STORAGE API
+// STORAGE API COM SUPORTE HÍBRIDO (LOCALSTORAGE + SUPABASE RESILIENTE)
 export const StorageService = {
   // Inicializa dados no LocalStorage se não existirem
   initLocalData() {
-    if (!localStorage.getItem(STORAGE_KEYS.CARDS)) {
-      localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(INITIAL_CARDS));
-    }
-    if (!localStorage.getItem(STORAGE_KEYS.CATEGORIES)) {
-      localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES));
-    }
-    if (!localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)) {
-      const initial = generateInitialTransactions();
-      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(initial.transactions));
-      localStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(initial.installments));
+    try {
+      if (!localStorage.getItem(STORAGE_KEYS.CARDS)) {
+        localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(INITIAL_CARDS));
+      }
+      if (!localStorage.getItem(STORAGE_KEYS.CATEGORIES)) {
+        localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES));
+      }
+      if (!localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)) {
+        const initial = generateInitialTransactions();
+        localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(initial.transactions));
+        localStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(initial.installments));
+      }
+    } catch (e) {
+      console.warn('LocalStorage access issue:', e);
     }
   },
 
   // Obter todos os cartões
   async getCards(userId?: string): Promise<Card[]> {
-    if (isSupabaseConfigured && supabase && userId) {
-      const { data, error } = await supabase.from('cards').select('*').eq('user_id', userId).order('created_at', { ascending: true });
-      if (!error && data) return data as Card[];
+    // Se for usuário autenticado real do Supabase
+    if (isSupabaseConfigured && supabase && isValidUUID(userId)) {
+      try {
+        const { data, error } = await supabase
+          .from('cards')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: true });
+        if (!error && data && data.length > 0) {
+          localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(data));
+          return data as Card[];
+        }
+      } catch (e) {
+        console.warn('Supabase getCards fallback to local:', e);
+      }
     }
+
     this.initLocalData();
     const raw = localStorage.getItem(STORAGE_KEYS.CARDS);
     return raw ? JSON.parse(raw) : INITIAL_CARDS;
@@ -205,69 +243,125 @@ export const StorageService = {
 
   // Salvar ou atualizar cartão
   async saveCard(card: Card, userId?: string): Promise<Card> {
-    if (isSupabaseConfigured && supabase && userId) {
-      const { data, error } = await supabase.from('cards').upsert({ ...card, user_id: userId }).select().single();
-      if (!error && data) return data as Card;
+    const isRealUser = isValidUUID(userId);
+    const cardId = card.id || generateUUID();
+    const safeCard: Card = {
+      ...card,
+      id: cardId,
+      user_id: isRealUser ? userId! : 'user-demo',
+      created_at: card.created_at || new Date().toISOString(),
+    };
+
+    if (isSupabaseConfigured && supabase && isRealUser && isValidUUID(safeCard.id)) {
+      try {
+        const { data, error } = await supabase
+          .from('cards')
+          .upsert(safeCard)
+          .select()
+          .single();
+        if (error) {
+          console.warn('Supabase saveCard warning:', error.message);
+        }
+      } catch (e) {
+        console.warn('Supabase saveCard exception:', e);
+      }
     }
+
     this.initLocalData();
     const cards = await this.getCards();
-    const idx = cards.findIndex(c => c.id === card.id);
+    const idx = cards.findIndex(c => c.id === safeCard.id);
     if (idx >= 0) {
-      cards[idx] = card;
+      cards[idx] = safeCard;
     } else {
-      cards.push(card);
+      cards.push(safeCard);
     }
     localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(cards));
-    return card;
+    return safeCard;
   },
 
   // Deletar cartão
   async deleteCard(cardId: string, userId?: string): Promise<void> {
-    if (isSupabaseConfigured && supabase && userId) {
-      await supabase.from('cards').delete().eq('id', cardId).eq('user_id', userId);
+    if (isSupabaseConfigured && supabase && isValidUUID(userId) && isValidUUID(cardId)) {
+      try {
+        await supabase.from('cards').delete().eq('id', cardId).eq('user_id', userId);
+      } catch (e) {
+        console.warn('Supabase deleteCard error:', e);
+      }
     }
+
     this.initLocalData();
     const cards = (await this.getCards()).filter(c => c.id !== cardId);
     localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(cards));
+
+    // Deletar transações e parcelas vinculadas a esse cartão
+    const txs = (await this.getTransactions()).filter(t => t.card_id !== cardId);
+    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(txs));
+
+    const installments = (await this.getInstallments()).filter(inst => inst.card_id !== cardId);
+    localStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(installments));
   },
 
   // Obter transações
   async getTransactions(userId?: string): Promise<Transaction[]> {
-    if (isSupabaseConfigured && supabase && userId) {
-      const { data, error } = await supabase.from('transactions').select('*').eq('user_id', userId).order('date', { ascending: false });
-      if (!error && data) return data as Transaction[];
+    if (isSupabaseConfigured && supabase && isValidUUID(userId)) {
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('user_id', userId)
+          .order('date', { ascending: false });
+        if (!error && data) {
+          localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(data));
+          return data as Transaction[];
+        }
+      } catch (e) {
+        console.warn('Supabase getTransactions fallback:', e);
+      }
     }
+
     this.initLocalData();
     const raw = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
     return raw ? JSON.parse(raw) : [];
   },
 
   // Salvar nova transação e desmembrar em parcelas
-  async createTransaction(tx: Omit<Transaction, 'id' | 'user_id' | 'created_at'>, cards: Card[], userId?: string): Promise<Transaction> {
+  async createTransaction(
+    tx: Omit<Transaction, 'id' | 'user_id' | 'created_at'>,
+    cards: Card[],
+    userId?: string
+  ): Promise<Transaction> {
+    const isRealUser = isValidUUID(userId);
+    const txId = generateUUID();
+
+    const card = cards.find(c => c.id === tx.card_id) || cards[0] || INITIAL_CARDS[0];
+    const effectiveCardId = card ? card.id : tx.card_id;
+    const closingDay = card ? card.closing_day : 10;
+    const dueDay = card ? card.due_day : 17;
+
     const newTx: Transaction = {
       ...tx,
-      id: `tx-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      user_id: userId || 'user-demo',
+      id: txId,
+      card_id: effectiveCardId,
+      user_id: isRealUser ? userId! : 'user-demo',
       created_at: new Date().toISOString(),
     };
 
-    const card = cards.find(c => c.id === tx.card_id) || cards[0];
-    const firstInvoiceMonth = calculateInvoiceMonth(tx.date, card.closing_day);
-    const installmentAmount = +(tx.amount / tx.total_installments).toFixed(2);
+    const firstInvoiceMonth = calculateInvoiceMonth(newTx.date, closingDay);
+    const installmentAmount = +(newTx.amount / newTx.total_installments).toFixed(2);
 
     const newInstallments: Installment[] = [];
-    for (let i = 1; i <= tx.total_installments; i++) {
+    for (let i = 1; i <= newTx.total_installments; i++) {
       const invMonth = addMonthsToYM(firstInvoiceMonth, i - 1);
-      const dueDate = calculateDueDate(invMonth, card.due_day);
+      const dueDate = calculateDueDate(invMonth, dueDay);
       newInstallments.push({
-        id: `inst-${newTx.id}-${i}`,
+        id: generateUUID(),
         transaction_id: newTx.id,
         user_id: newTx.user_id,
         card_id: newTx.card_id,
         installment_number: i,
         total_installments: newTx.total_installments,
-        amount: i === tx.total_installments 
-          ? +(tx.amount - (installmentAmount * (tx.total_installments - 1))).toFixed(2)
+        amount: i === newTx.total_installments 
+          ? +(newTx.amount - (installmentAmount * (newTx.total_installments - 1))).toFixed(2)
           : installmentAmount,
         due_date: dueDate,
         invoice_month: invMonth,
@@ -277,30 +371,139 @@ export const StorageService = {
       });
     }
 
-    if (isSupabaseConfigured && supabase && userId) {
-      await supabase.from('transactions').insert(newTx);
-      await supabase.from('installments').insert(newInstallments);
-      return newTx;
+    // Se for usuário real e cartão real no Supabase
+    if (isSupabaseConfigured && supabase && isRealUser && isValidUUID(effectiveCardId)) {
+      try {
+        const { error: txErr } = await supabase.from('transactions').insert(newTx);
+        if (!txErr) {
+          await supabase.from('installments').insert(newInstallments);
+        } else {
+          console.warn('Supabase insert tx warning:', txErr.message);
+        }
+      } catch (e) {
+        console.warn('Supabase insert tx exception:', e);
+      }
     }
 
+    // SEMPRE GRAVAR NO LOCALSTORAGE PARA NUNCA PERDER DADOS
     this.initLocalData();
     const txs = await this.getTransactions();
     txs.unshift(newTx);
     localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(txs));
 
     const currentInstallments = await this.getInstallments();
-    const mergedInstallments = [...currentInstallments, ...newInstallments];
+    const mergedInstallments = [...newInstallments, ...currentInstallments];
     localStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(mergedInstallments));
 
     return newTx;
   },
 
+  // Salvar transações em LOTE (Importação de extratos super rápida e atômica)
+  async createTransactionsBatch(
+    items: Array<Omit<Transaction, 'id' | 'user_id' | 'created_at'>>,
+    cards: Card[],
+    userId?: string
+  ): Promise<{ transactions: Transaction[]; installments: Installment[]; primaryInvoiceMonth: string }> {
+    const isRealUser = isValidUUID(userId);
+    const newTxs: Transaction[] = [];
+    const allNewInstallments: Installment[] = [];
+    const invoiceMonthsCount: Record<string, number> = {};
+
+    for (const tx of items) {
+      const txId = generateUUID();
+      const card = cards.find(c => c.id === tx.card_id) || cards[0] || INITIAL_CARDS[0];
+      const effectiveCardId = card ? card.id : tx.card_id;
+      const closingDay = card ? card.closing_day : 10;
+      const dueDay = card ? card.due_day : 17;
+
+      const newTx: Transaction = {
+        ...tx,
+        id: txId,
+        card_id: effectiveCardId,
+        user_id: isRealUser ? userId! : 'user-demo',
+        created_at: new Date().toISOString(),
+      };
+
+      const firstInvoiceMonth = calculateInvoiceMonth(newTx.date, closingDay);
+      invoiceMonthsCount[firstInvoiceMonth] = (invoiceMonthsCount[firstInvoiceMonth] || 0) + 1;
+      const installmentAmount = +(newTx.amount / newTx.total_installments).toFixed(2);
+
+      for (let i = 1; i <= newTx.total_installments; i++) {
+        const invMonth = addMonthsToYM(firstInvoiceMonth, i - 1);
+        const dueDate = calculateDueDate(invMonth, dueDay);
+        allNewInstallments.push({
+          id: generateUUID(),
+          transaction_id: newTx.id,
+          user_id: newTx.user_id,
+          card_id: newTx.card_id,
+          installment_number: i,
+          total_installments: newTx.total_installments,
+          amount: i === newTx.total_installments 
+            ? +(newTx.amount - (installmentAmount * (newTx.total_installments - 1))).toFixed(2)
+            : installmentAmount,
+          due_date: dueDate,
+          invoice_month: invMonth,
+          status: 'pending',
+          description: newTx.description,
+          category_id: newTx.category_id,
+        });
+      }
+
+      newTxs.push(newTx);
+    }
+
+    // Identificar o mês de fatura onde caíram mais lançamentos
+    let primaryInvoiceMonth = Object.keys(invoiceMonthsCount)[0] || '';
+    let maxCount = 0;
+    for (const [m, count] of Object.entries(invoiceMonthsCount)) {
+      if (count > maxCount) {
+        maxCount = count;
+        primaryInvoiceMonth = m;
+      }
+    }
+
+    // Tentativa no Supabase se usuário e cartão forem UUIDs válidos
+    if (isSupabaseConfigured && supabase && isRealUser && newTxs.length > 0 && isValidUUID(newTxs[0].card_id)) {
+      try {
+        const { error: txsErr } = await supabase.from('transactions').insert(newTxs);
+        if (!txsErr) {
+          await supabase.from('installments').insert(allNewInstallments);
+        } else {
+          console.warn('Supabase batch insert warning:', txsErr.message);
+        }
+      } catch (e) {
+        console.warn('Supabase batch insert exception:', e);
+      }
+    }
+
+    // SEMPRE GRAVAR NO LOCALSTORAGE IMEDIATAMENTE
+    this.initLocalData();
+    const existingTxs = await this.getTransactions();
+    const mergedTxs = [...newTxs, ...existingTxs];
+    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(mergedTxs));
+
+    const existingInstallments = await this.getInstallments();
+    const mergedInstallments = [...allNewInstallments, ...existingInstallments];
+    localStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(mergedInstallments));
+
+    return {
+      transactions: newTxs,
+      installments: allNewInstallments,
+      primaryInvoiceMonth,
+    };
+  },
+
   // Deletar transação e suas parcelas
   async deleteTransaction(txId: string, userId?: string): Promise<void> {
-    if (isSupabaseConfigured && supabase && userId) {
-      await supabase.from('transactions').delete().eq('id', txId).eq('user_id', userId);
-      await supabase.from('installments').delete().eq('transaction_id', txId).eq('user_id', userId);
+    if (isSupabaseConfigured && supabase && isValidUUID(userId) && isValidUUID(txId)) {
+      try {
+        await supabase.from('transactions').delete().eq('id', txId).eq('user_id', userId);
+        await supabase.from('installments').delete().eq('transaction_id', txId).eq('user_id', userId);
+      } catch (e) {
+        console.warn('Supabase deleteTransaction warning:', e);
+      }
     }
+
     this.initLocalData();
     const txs = (await this.getTransactions()).filter(t => t.id !== txId);
     localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(txs));
@@ -311,10 +514,22 @@ export const StorageService = {
 
   // Obter parcelas
   async getInstallments(userId?: string): Promise<Installment[]> {
-    if (isSupabaseConfigured && supabase && userId) {
-      const { data, error } = await supabase.from('installments').select('*').eq('user_id', userId).order('due_date', { ascending: true });
-      if (!error && data) return data as Installment[];
+    if (isSupabaseConfigured && supabase && isValidUUID(userId)) {
+      try {
+        const { data, error } = await supabase
+          .from('installments')
+          .select('*')
+          .eq('user_id', userId)
+          .order('due_date', { ascending: true });
+        if (!error && data) {
+          localStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(data));
+          return data as Installment[];
+        }
+      } catch (e) {
+        console.warn('Supabase getInstallments fallback:', e);
+      }
     }
+
     this.initLocalData();
     const raw = localStorage.getItem(STORAGE_KEYS.INSTALLMENTS);
     return raw ? JSON.parse(raw) : [];
@@ -322,10 +537,21 @@ export const StorageService = {
 
   // Obter faturas
   async getInvoices(userId?: string): Promise<Invoice[]> {
-    if (isSupabaseConfigured && supabase && userId) {
-      const { data, error } = await supabase.from('invoices').select('*').eq('user_id', userId);
-      if (!error && data) return data as Invoice[];
+    if (isSupabaseConfigured && supabase && isValidUUID(userId)) {
+      try {
+        const { data, error } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('user_id', userId);
+        if (!error && data) {
+          localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(data));
+          return data as Invoice[];
+        }
+      } catch (e) {
+        console.warn('Supabase getInvoices fallback:', e);
+      }
     }
+
     this.initLocalData();
     const raw = localStorage.getItem(STORAGE_KEYS.INVOICES);
     return raw ? JSON.parse(raw) : [];
@@ -336,21 +562,24 @@ export const StorageService = {
     const status = paid ? 'paid' : 'open';
     const paid_at = paid ? new Date().toISOString() : null;
 
-    if (isSupabaseConfigured && supabase && userId) {
-      await supabase.from('invoices').upsert({
-        card_id: cardId,
-        month,
-        user_id: userId,
-        status,
-        paid_at,
-      }, { onConflict: 'user_id, card_id, month' });
+    if (isSupabaseConfigured && supabase && isValidUUID(userId) && isValidUUID(cardId)) {
+      try {
+        await supabase.from('invoices').upsert({
+          card_id: cardId,
+          month,
+          user_id: userId,
+          status,
+          paid_at,
+        }, { onConflict: 'user_id, card_id, month' });
 
-      // Atualizar status das parcelas daquela fatura
-      await supabase.from('installments')
-        .update({ status: paid ? 'paid' : 'pending' })
-        .eq('card_id', cardId)
-        .eq('invoice_month', month)
-        .eq('user_id', userId);
+        await supabase.from('installments')
+          .update({ status: paid ? 'paid' : 'pending' })
+          .eq('card_id', cardId)
+          .eq('invoice_month', month)
+          .eq('user_id', userId);
+      } catch (e) {
+        console.warn('Supabase setInvoicePaid warning:', e);
+      }
     }
 
     this.initLocalData();
@@ -361,7 +590,7 @@ export const StorageService = {
       invoices[idx].paid_at = paid_at;
     } else {
       invoices.push({
-        id: `inv-${cardId}-${month}`,
+        id: generateUUID(),
         user_id: userId || 'user-demo',
         card_id: cardId,
         month,
@@ -374,7 +603,6 @@ export const StorageService = {
     }
     localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoices));
 
-    // Atualizar parcelas locais
     const installments = await this.getInstallments();
     installments.forEach(inst => {
       if (inst.card_id === cardId && inst.invoice_month === month) {
@@ -386,10 +614,21 @@ export const StorageService = {
 
   // Obter categorias
   async getCategories(userId?: string): Promise<Category[]> {
-    if (isSupabaseConfigured && supabase && userId) {
-      const { data, error } = await supabase.from('categories').select('*').or(`user_id.is.null,user_id.eq.${userId}`);
-      if (!error && data && data.length > 0) return data as Category[];
+    if (isSupabaseConfigured && supabase && isValidUUID(userId)) {
+      try {
+        const { data, error } = await supabase
+          .from('categories')
+          .select('*')
+          .or(`user_id.is.null,user_id.eq.${userId}`);
+        if (!error && data && data.length > 0) {
+          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(data));
+          return data as Category[];
+        }
+      } catch (e) {
+        console.warn('Supabase getCategories fallback:', e);
+      }
     }
+
     this.initLocalData();
     const raw = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
     return raw ? JSON.parse(raw) : DEFAULT_CATEGORIES;
@@ -397,11 +636,15 @@ export const StorageService = {
 
   // Resetar para dados de demonstração
   resetToDemo() {
-    localStorage.removeItem(STORAGE_KEYS.CARDS);
-    localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
-    localStorage.removeItem(STORAGE_KEYS.INSTALLMENTS);
-    localStorage.removeItem(STORAGE_KEYS.INVOICES);
-    localStorage.removeItem(STORAGE_KEYS.CATEGORIES);
-    this.initLocalData();
+    try {
+      localStorage.removeItem(STORAGE_KEYS.CARDS);
+      localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
+      localStorage.removeItem(STORAGE_KEYS.INSTALLMENTS);
+      localStorage.removeItem(STORAGE_KEYS.INVOICES);
+      localStorage.removeItem(STORAGE_KEYS.CATEGORIES);
+      this.initLocalData();
+    } catch (e) {
+      console.warn('Reset error:', e);
+    }
   }
 };

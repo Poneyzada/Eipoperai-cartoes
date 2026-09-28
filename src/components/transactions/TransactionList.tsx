@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../../hooks/useAppContext';
-import { formatCurrency, formatDate } from '../../lib/utils';
+import { formatCurrency, formatDate, formatMonthYear } from '../../lib/utils';
 import { 
   Receipt, 
   Trash2, 
@@ -22,6 +22,7 @@ export const TransactionList: React.FC = () => {
     cards, 
     categories, 
     selectedMonth, 
+    setSelectedMonth,
     selectedCardId, 
     deleteTransaction 
   } = useApp();
@@ -35,6 +36,14 @@ export const TransactionList: React.FC = () => {
     const matchesSearch = !searchTerm || (inst.description?.toLowerCase().includes(searchTerm.toLowerCase()));
     return matchesMonth && matchesCard && matchesSearch;
   });
+
+  // Outros meses com parcelas para guiar o usuário caso o mês atual esteja vazio
+  const otherMonthsWithInstallments = useMemo(() => {
+    const months = Array.from(new Set(installments.map(i => i.invoice_month)))
+      .filter(m => m !== selectedMonth)
+      .sort();
+    return months;
+  }, [installments, selectedMonth]);
 
   const getCategory = (catId?: string) => {
     return categories.find(c => c.id === catId || c.name === catId) || categories[categories.length - 1];
@@ -86,10 +95,31 @@ export const TransactionList: React.FC = () => {
 
       {/* Lista de Transações */}
       {monthInstallments.length === 0 ? (
-        <div className="py-10 text-center text-zinc-500 space-y-2">
+        <div className="py-10 text-center text-zinc-500 space-y-3">
           <Receipt className="w-8 h-8 mx-auto text-zinc-600 opacity-60" />
-          <p className="text-sm font-medium">Nenhum lançamento encontrado nesta fatura.</p>
-          <p className="text-xs text-zinc-600">Toque em "Nova Despesa" ou "Importar Extrato" para lançar compras.</p>
+          <p className="text-sm font-medium text-zinc-400">Nenhum lançamento encontrado nesta fatura de {formatMonthYear(selectedMonth)}.</p>
+          
+          {otherMonthsWithInstallments.length > 0 ? (
+            <div className="pt-2">
+              <p className="text-xs text-amber-400/90 font-semibold mb-2">
+                Encontramos compras suas cadastradas em outras faturas:
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {otherMonthsWithInstallments.slice(0, 3).map(m => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setSelectedMonth(m)}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all"
+                  >
+                    Ver Fatura de {formatMonthYear(m)} ➔
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-zinc-600">Toque em "Nova Despesa" ou "Importar Extrato" para lançar compras.</p>
+          )}
         </div>
       ) : (
         <div className="divide-y divide-zinc-800/60">
